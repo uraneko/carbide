@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::PathBuf;
+use std::thread::{spawn, JoinHandle};
 
 const INPUT_DEVICES: &str = "/proc/bus/input/devices";
 
@@ -16,23 +17,56 @@ fn main() {
     // then: read '/proc/bus/input/devices'
     // then: parse results into InputDevice instances
 
-    let mut args = std::env::args();
-    args.next();
+    let (pats, method) = parse_args();
 
-    let pats = parse_args();
-    println!("{:?}", pats);
+    let devices = parse_devices();
 
-    // println!("{:?}", parse_devices());
+    if pats.is_empty() {
+        println!("{:#?}", devices);
+        return;
+    } else if method == 2 {
+        let devices = pats
+            .into_iter()
+            .map(|p| filter_devices(&devices, &p))
+            .flatten()
+            .collect::<Vec<&InputDevice>>();
+        println!("{:#?}", devices);
+        return;
+    }
+
+    let handles = pats
+        .into_iter()
+        .map(|p| {
+            let e = find_device(&devices, &p);
+            e
+        })
+        .filter(|eo| eo.is_some())
+        .map(|eo| eo.unwrap().to_string())
+        .map(|e| bind_logger(e))
+        .collect::<Vec<JoinHandle<()>>>();
+
+    handles.into_iter().for_each(|h| h.join().unwrap());
 }
 
-fn parse_args() -> Vec<Vec<String>> {
+fn parse_args() -> (Vec<Vec<String>>, u8) {
     let mut args = std::env::args();
     args.next();
+
+    let mut method = 0;
+
+    if args.len() == 0 {
+        return (vec![], method);
+    }
 
     let mut v = vec![];
     let mut vv = vec![];
     while let Some(arg) = args.next() {
-        if &arg == "-d" {
+        if &arg == "-d" || &arg == "-l" {
+            if &arg == "-d" && method != 1 {
+                method = 1;
+            } else if &arg == "-l" && method != 2 {
+                method = 2;
+            }
             if !vv.is_empty() {
                 v.push(vv.drain(..).collect());
             }
@@ -41,7 +75,9 @@ fn parse_args() -> Vec<Vec<String>> {
         }
     }
 
-    v
+    v.push(vv);
+
+    (v, method)
 }
 
 #[derive(Debug)]
@@ -120,8 +156,10 @@ fn parse_device(device: &str) -> InputDevice {
             };
             assert_eq!(&handlers[..12], "H: Handlers=");
             handlers
+                .replace("H: Handlers=", "")
                 .split(' ')
                 .map(|s| s.to_owned())
+                .filter(|h| !h.is_empty())
                 .collect::<HashSet<String>>()
         },
 
@@ -136,6 +174,26 @@ fn parse_device(device: &str) -> InputDevice {
             map
         },
     }
+}
+
+fn filter_devices<'a, 'b>(devices: &'a [InputDevice], pat: &'b [String]) -> Vec<&'a InputDevice>
+where
+    'a: 'b,
+{
+    devices
+        .into_iter()
+        .filter(|d| {
+            let mut condition = true;
+            for p in pat {
+                if !d.name.contains(p) {
+                    condition = false;
+                    break;
+                }
+            }
+
+            condition
+        })
+        .collect()
 }
 
 fn log_input(e: &str) {
@@ -162,7 +220,7 @@ fn log_input(e: &str) {
     }
 }
 
-fn find_device<'a>(devices: &'a [InputDevice], pat: &[&'a str]) -> Option<&'a String> {
+fn find_device<'a>(devices: &'a [InputDevice], pat: &[String]) -> Option<&'a String> {
     let dev = devices.iter().find(|d| {
         let mut condition = true;
         for p in pat {
@@ -174,6 +232,7 @@ fn find_device<'a>(devices: &'a [InputDevice], pat: &[&'a str]) -> Option<&'a St
 
         condition
     });
+
     if dev.is_some() {
         return dev.unwrap().handlers.iter().find(|h| h.contains("event"));
     }
@@ -181,8 +240,6 @@ fn find_device<'a>(devices: &'a [InputDevice], pat: &[&'a str]) -> Option<&'a St
     None
 }
 
-use std::thread::{spawn, JoinHandle};
-
-fn bind_logger(event: &'static str) -> JoinHandle<()> {
-    spawn(move || log_input(event))
+fn bind_logger(event: String) -> JoinHandle<()> {
+    spawn(move || log_input(&event))
 }
