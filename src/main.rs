@@ -1,83 +1,187 @@
 use std::collections::{HashMap, HashSet};
-use std::fs::File;
-use std::io::{BufReader, Read};
-use std::path::PathBuf;
+use std::fs::{File, OpenOptions};
+use std::io::Error;
+use std::io::Read;
+use std::io::Write;
+use std::path::Path;
 use std::thread::{spawn, JoinHandle};
+
+// mod keys;
+mod builder;
+mod input_event;
+
+use builder::ProgramBuilder;
+
+// use keys::key;
+
+//  how to decode input event bytes into some key event can be found at
+//  "https://www.kernel.org/doc/Documentation/input/input.txt"
 
 const INPUT_DEVICES: &str = "/proc/bus/input/devices";
 
-fn main() {
-    // gamepad input file path
-    // event19 was gamepad 2
-    // 18 was gp1
-    // 17 was kbd
-    // and 10 was touchpad
-    // TODO: which event file pertains to which input device
-    // TODO: make a struct InputDevice
-    // then: read '/proc/bus/input/devices'
-    // then: parse results into InputDevice instances
+impl ProgramBuilder {
+    /// parses the fields of this instance of the program builder
+    /// consuming it and running the program
+    pub fn run(self) -> Option<Vec<JoinHandle<()>>> {
+        let mut writer = std::io::stdout().lock();
 
-    let (pats, method) = parse_args();
+        let devices = parse_devices();
+        match self.method {
+            // print all
+            0 => {
+                // FIXME: use writer.write instead
+                println!("{:#?}", devices);
+            }
+            // query devices
+            2 => {
+                let devices = self
+                    .patterns
+                    .into_iter()
+                    .map(|p| filter_devices(&devices, &p))
+                    .flatten()
+                    .collect::<Vec<&InputDevice>>();
+                println!("{:#?}", devices);
+            }
+            // bind readers to files
+            3 => {
+                let handles = self
+                    .patterns
+                    .into_iter()
+                    .map(|p| {
+                        let e = find_device(&devices, &p);
+                        e
+                    })
+                    .filter(|eo| eo.is_some())
+                    .map(|eo| eo.unwrap().to_string())
+                    .map(|e| bind_logger(e))
+                    .collect::<Vec<JoinHandle<()>>>();
 
-    let devices = parse_devices();
+                println!("{:?}", handles);
 
-    if pats.is_empty() {
-        println!("{:#?}", devices);
-        return;
-    } else if method == 2 {
-        let devices = pats
-            .into_iter()
-            .map(|p| filter_devices(&devices, &p))
-            .flatten()
-            .collect::<Vec<&InputDevice>>();
-        println!("{:#?}", devices);
-        return;
+                return Some(handles);
+            }
+            // print help message
+            1 => {
+                help(&mut writer);
+            }
+            _ => unreachable!(),
+        }
+
+        None
     }
-
-    let handles = pats
-        .into_iter()
-        .map(|p| {
-            let e = find_device(&devices, &p);
-            e
-        })
-        .filter(|eo| eo.is_some())
-        .map(|eo| eo.unwrap().to_string())
-        .map(|e| bind_logger(e))
-        .collect::<Vec<JoinHandle<()>>>();
-
-    handles.into_iter().for_each(|h| h.join().unwrap());
 }
 
-fn parse_args() -> (Vec<Vec<String>>, u8) {
+fn help(writer: &mut std::io::StdoutLock) {
+    _ = writer.write(
+        b"
+running the program without any arguments prints all the input devices found in
+'/proc/bus/input/devices' then exits
+-q query for some pattern amongst the available devices
+
+-b bind a reader to an eventx file and start listening
+    if neither -r nor -d are given with this then -d is assumed
+    if neither -l nor -t are provided then -t is assumed
+
+-r reader outputs raw bytes data
+
+-d reader outputs decoded input_event struct data
+
+-l|-lc|-lo <file> log the read data to an output log file
+    -lo will overwrite the provided log file if it exists 
+    -lc will append to the file 
+    if -l is provided alone then -lc is assumed
+
+-t print the read data to the terminal stdout
+
+-h print this help message
+",
+    )
+}
+
+fn main() {
+    // decode_bytes(&[28]);
+    // return;
+    let builder = match parse_args() {
+        Ok(builder) => builder,
+        Err(e) => panic!(
+            "couldn't parse args into builder, aborting program\n{:?}",
+            e
+        ),
+    };
+
+    println!("{:?}", builder);
+
+    let handles = builder.run();
+
+    if let Some(handles) = handles {
+        handles.into_iter().for_each(|h| h.join().unwrap());
+    }
+}
+
+fn parse_args() -> Result<ProgramBuilder, Error> {
+    let mut builder = ProgramBuilder::new();
+
     let mut args = std::env::args();
     args.next();
 
-    let mut method = 0;
-
     if args.len() == 0 {
-        return (vec![], method);
+        return Ok(builder);
     }
 
-    let mut v = vec![];
-    let mut vv = vec![];
+    let mut pats = vec![];
+
     while let Some(arg) = args.next() {
-        if &arg == "-d" || &arg == "-l" {
-            if &arg == "-d" && method != 1 {
-                method = 1;
-            } else if &arg == "-l" && method != 2 {
-                method = 2;
+        match arg.trim() {
+            "-q" => {
+                builder.method_mut(2);
+                builder.push(pats.drain(..).collect());
             }
-            if !vv.is_empty() {
-                v.push(vv.drain(..).collect());
+            "-b" => {
+                builder.method_mut(3);
+                builder.push(pats.drain(..).collect());
             }
-        } else {
-            vv.push(arg)
+            "-h" => {
+                builder.method_mut(1);
+                return Ok(builder);
+            }
+            "-r" => builder.data_mut(2),
+            "-d" => builder.data_mut(1),
+            "-t" => builder.output_mut(1),
+            "-l" | "-lc" | "-lo" => {
+                builder.output_mut(2);
+                let fp =
+                    match args.next() {
+                        Some(fp) => fp,
+                        None => return Err(Error::other(
+                            "the -l log file param was turned on, yet no file path was provided",
+                        )),
+                    };
+
+                let fp = Path::new(&fp);
+
+                let mut oo = OpenOptions::new();
+                oo.write(true).create(true);
+                match arg.trim() {
+                    "-l" | "-lc" => oo.append(true),
+                    "-lo" => oo.truncate(true),
+                    _ => unreachable!(),
+                };
+
+                // may panic on unwrap,
+                // read ['https://doc.rust-lang.org/stable/std/fs/struct.OpenOptions.html#method.open'] Errors section for more
+                builder.log_file_mut(oo.open(fp).unwrap());
+            }
+            pat => pats.push(pat.to_string()),
         }
     }
 
-    v.push(vv);
+    if !pats.is_empty() {
+        builder.push(pats);
+    }
 
-    (v, method)
+    // assert!(0 && builder.output == 0 || builder.method == );
+
+    Ok(builder)
 }
 
 #[derive(Debug)]
@@ -207,7 +311,7 @@ fn log_input(e: &str) {
     // if a size that is smaller than the size of input_event is provided, this program would
     // crash, if a bigger size is provided, the program works fine
     // TODO: detect system and derive input_event struct size to be used
-    const IES_SIZE: usize = 28;
+    const IES_SIZE: usize = 24;
     let mut buf = [0u8; IES_SIZE];
 
     let refresh = 1000 / 60;
