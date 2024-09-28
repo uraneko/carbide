@@ -146,14 +146,17 @@ fn actions(args: Patterns) -> (char, Vec<Action>) {
 fn dquery(pats: Vec<String>, devices: &mut Vec<InputDevice>) -> Action {
     Action {
         devices: {
-            let rm = devices
+            let mut rm = devices
                 .into_iter()
                 .enumerate()
+                .inspect(|(i, _)| print!("{}, ", i))
                 .filter(|(_, d)| pats.iter().all(|p| d.name().contains(p)))
                 .map(|(i, _)| i)
                 .collect::<Vec<usize>>();
+            rm.sort_by(|a, b| b.cmp(a));
 
             // BUG: index out of range
+            println!("\nlen: {}", devices.len());
             rm.into_iter().map(|i| devices.remove(i)).collect()
         },
         method: Method::Query,
@@ -165,12 +168,13 @@ fn dbind(pats: (u8, Vec<String>), devices: &mut Vec<InputDevice>) -> Action {
     let pats = pats.1;
     Action {
         devices: {
-            let rm = devices
+            let mut rm = devices
                 .into_iter()
                 .enumerate()
                 .filter(|(_, d)| pats.iter().all(|p| d.name().contains(p)))
                 .map(|(i, _)| i)
                 .collect::<Vec<usize>>();
+            rm.sort_by(|a, b| b.cmp(a));
 
             rm.into_iter().map(|i| devices.remove(i)).collect()
         },
