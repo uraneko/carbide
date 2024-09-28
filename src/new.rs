@@ -257,7 +257,7 @@ fn logs(logger: Logger) {
         std::thread::sleep(std::time::Duration::from_millis(refresh));
 
         gpf.read(&mut buf).unwrap();
-        writer.write(&buf, &mut log);
+        _ = writer.write(&buf, &mut log);
 
         // brk += 1;
         // if brk == 4 {
