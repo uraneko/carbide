@@ -1,25 +1,49 @@
-mod new;
-
 mod devices;
-mod format;
-mod input__event;
-mod log;
-
-// TODO: 2 things left to do
-// fix query and bind bugs
-// finish decoding the input event bytes into an input_event struct instance
-
-use format::{codes::code, types::type_};
-
-//  how to decode input event bytes into some key event can be found at
-//  "https://www.kernel.org/doc/Documentation/input/input.txt"
+// mod input_event;
 
 fn main() {
-    // decode_bytes(&[28]);
-    // return;
-    let handles = new::run();
+    cli();
+}
 
-    if let Some(handles) = handles {
-        handles.into_iter().for_each(|h| h.join().unwrap());
+fn cli() {
+    let mut args = std::env::args();
+    args.next();
+
+    eprintln!("## {:?}", args);
+
+    match next(args.next()).as_str() {
+        "-L" => {
+            let devs = devices::get_devices();
+
+            println!(
+                "{:#?}",
+                devs.iter().map(|d| d.name()).collect::<Vec<&str>>()
+            );
+        }
+        "-Lf" => {
+            let pats = args.collect::<Vec<String>>();
+            let devs = devices::get_devices();
+            let fltr = devices::filter_devices(&devs, &pats);
+
+            println!(
+                "{:#?}",
+                fltr.iter().map(|d| d.name()).collect::<Vec<&str>>()
+            );
+        }
+        "-Lfs" => {
+            let pats = args.collect::<Vec<String>>();
+            let devs = devices::get_devices();
+            let fltr = devices::filter_devices_strict(&devs, &pats);
+
+            println!(
+                "{:#?}",
+                fltr.iter().map(|d| d.name()).collect::<Vec<&str>>()
+            );
+        }
+        _ => eprintln!("error, unrecognized argument"),
     }
+}
+
+fn next(arg: Option<String>) -> String {
+    arg.unwrap_or("".into())
 }
