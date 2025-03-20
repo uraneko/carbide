@@ -204,10 +204,35 @@ pub(crate) fn get_device(device: &str) -> InputDevice {
         },
     }
 }
+pub(crate) fn into_filter_devices(
+    devices: Vec<InputDevice>,
+    pats: Vec<String>,
+) -> Vec<InputDevice> {
+    devices
+        .into_iter()
+        .filter(|d| {
+            let name = d.name();
+            pats.iter().any(|p| name.contains(p))
+        })
+        .collect()
+}
 
-pub(crate) fn filter_devices<'a, 'b>(
+pub(crate) fn into_filter_devices_strict(
+    devices: Vec<InputDevice>,
+    pats: Vec<String>,
+) -> Vec<InputDevice> {
+    devices
+        .into_iter()
+        .filter(|d| {
+            let name = d.name();
+            pats.iter().all(|p| name.contains(p))
+        })
+        .collect()
+}
+
+pub(crate) fn as_filter_devices<'a, 'b>(
     devices: &'a [InputDevice],
-    pats: &'b [String],
+    pats: &[String],
 ) -> Vec<&'a InputDevice>
 where
     'a: 'b,
@@ -220,9 +245,9 @@ where
         })
         .collect()
 }
-pub(crate) fn filter_devices_strict<'a, 'b>(
+pub(crate) fn as_filter_devices_strict<'a, 'b>(
     devices: &'a [InputDevice],
-    pats: &'b [String],
+    pats: &[String],
 ) -> Vec<&'a InputDevice>
 where
     'a: 'b,
