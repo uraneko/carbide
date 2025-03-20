@@ -16,6 +16,7 @@ fn cli() {
     match &arg[..2] {
         "-L" => List::new(&arg, args).print_devices(),
         "-R" => read(&arg, args),
+        "-H" => help(&arg, args),
         _ => panic!("unrecognized option flag"),
     }
 }
@@ -95,3 +96,32 @@ impl List {
 }
 
 fn read(arg: &str, args: std::env::Args) {}
+
+fn help(arg: &str, _: std::env::Args) {
+    let red: String = clr(241, 153, 123);
+    let blue: String = clr(167, 123, 213);
+    println!(
+        "{}\n\n{}{}\n\n{}\n\n{}\t{}\n{}\t{}\n{}\t{}",
+        "Linux input device event logger",
+        blue.clone() + "Usage:" + END + " ",
+        red.clone() + "fen [COMMAND][OPTIONS] [ARGUMENTS]" + END,
+        blue.clone() + "COMMANDS:" + END + " ",
+        blue.clone() + "-L (list)",
+        red.clone() + "list the input devices detected on this host machine",
+        blue.clone() + "-R (read)",
+        red.clone() + "read the input events of a selected input device",
+        blue.clone() + "-H (help)",
+        red.clone() + "print this help message",
+    );
+}
+
+use colors::{clr, END};
+
+mod colors {
+    const START: &str = "\x1b[1;38;2";
+    pub(super) const END: &str = "\x1b[0m";
+
+    pub(super) fn clr(r: u8, g: u8, b: u8) -> String {
+        format!("{};{};{};{}m", START, r, g, b)
+    }
+}
