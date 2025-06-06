@@ -42,8 +42,11 @@ impl InputDevice {
         &self.n
     }
 
-    pub(crate) fn event(&self) -> Option<&String> {
-        self.h.iter().find(|h| h.contains("event"))
+    pub(crate) fn event(&self) -> &str {
+        self.h
+            .iter()
+            .find(|h| h.contains("event"))
+            .map_or("_", |e| e)
     }
 }
 
@@ -230,13 +233,10 @@ pub(crate) fn into_filter_devices_strict(
         .collect()
 }
 
-pub(crate) fn as_filter_devices<'a, 'b>(
+pub(crate) fn as_filter_devices<'a>(
     devices: &'a [InputDevice],
     pats: &[String],
-) -> Vec<&'a InputDevice>
-where
-    'a: 'b,
-{
+) -> Vec<&'a InputDevice> {
     devices
         .into_iter()
         .filter(|d| {
@@ -245,13 +245,10 @@ where
         })
         .collect()
 }
-pub(crate) fn as_filter_devices_strict<'a, 'b>(
+pub(crate) fn as_filter_devices_strict<'a>(
     devices: &'a [InputDevice],
     pats: &[String],
-) -> Vec<&'a InputDevice>
-where
-    'a: 'b,
-{
+) -> Vec<&'a InputDevice> {
     devices
         .into_iter()
         .filter(|d| {
@@ -260,37 +257,3 @@ where
         })
         .collect()
 }
-
-// const HEX_A: &str = "10";
-// const HEX_B: &str = "11";
-// const HEX_C: &str = "12";
-// const HEX_D: &str = "13";
-// const HEX_E: &str = "14";
-// const HEX_F: &str = "15";
-//
-// fn hex_decode(value: &str) -> Result<u64, std::io::Error> {
-//     if value.contains(|c: char| !c.is_ascii_digit() && !('a'..'f').contains(&c)) {
-//         return Err(std::io::Error::other("not a valid hex int"));
-//     }
-//
-//     let [mut a, mut b, mut c, mut d, mut e, mut f]: [usize; 6] = [0; 6];
-//     value.chars().for_each(|ch| match ch {
-//         'a' => a += 1,
-//         'b' => b += 1,
-//         'c' => c += 1,
-//         'd' => d += 1,
-//         'e' => e += 1,
-//         'f' => f += 1,
-//         _ => (),
-//     });
-//
-//     Ok(value
-//         .replacen('a', HEX_A, a)
-//         .replacen('b', HEX_B, b)
-//         .replacen('c', HEX_C, c)
-//         .replacen('d', HEX_D, d)
-//         .replacen('e', HEX_E, e)
-//         .replacen('f', HEX_F, f)
-//         .parse()
-//         .unwrap())
-// }

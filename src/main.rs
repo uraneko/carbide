@@ -1,8 +1,9 @@
 mod devices;
-// mod input_event;
+mod input_event;
 
 fn main() {
     cli();
+    // input_event::read("event17");
 }
 
 fn cli() {
@@ -14,59 +15,31 @@ fn cli() {
     let arg = args.next().unwrap_or("".into());
 
     match &arg[..2] {
-        "-L" => List::new(&arg, args).print_devices(),
-        "-R" => read(&arg, args),
-        "-H" => help(&arg, args),
+        "-L" => List::new(&arg, args).list(),
+        "-R" => input_event::read("event17"),
+        "-H" => Help::new(&arg, args).help(),
         _ => panic!("unrecognized option flag"),
     }
 }
 
-// fn list(arg: &str, args: std::env::Args) {
-//     match arg {
-//         "-L" => {
-//             let devs = devices::get_devices();
-//
-//             println!(
-//                 "{:#?}",
-//                 devs.iter().map(|d| d.name()).collect::<Vec<&str>>()
-//             );
-//         }
-//         "-Lf" | "-Lfn" => {
-//             let pats = args.collect::<Vec<String>>();
-//             let devs = devices::get_devices();
-//             let fltr = devices::filter_devices(&devs, &pats);
-//
-//             println!(
-//                 "{:#?}",
-//                 fltr.iter().map(|d| d.name()).collect::<Vec<&str>>()
-//             );
-//         }
-//         "-Lfs" | "-Lfsn" => {
-//             let pats = args.collect::<Vec<String>>();
-//             let devs = devices::get_devices();
-//             let fltr = devices::filter_devices_strict(&devs, &pats);
-//
-//             println!(
-//                 "{:#?}",
-//                 fltr.iter().map(|d| d.name()).collect::<Vec<&str>>()
-//             );
-//         }
-//         _ => eprintln!("error, unrecognized argument"),
-//     }
-// }
-
 struct List {
+    // works only with the filter (f) option
     strict: bool,
-    name_only: bool,
+    // prints the name and anything else turned on amongst the reductive options
+    name_reductive: bool,
+    // prints the event file name and anything else turned on amongst the reductive options
+    event_reductive: bool,
+    // applys filters by name to the device list
     filters: Option<Vec<String>>,
 }
 
 impl List {
     fn new(arg: &str, args: std::env::Args) -> Self {
         Self {
-            strict: arg.contains("s"),
-            name_only: arg.contains("n"),
-            filters: if arg.contains("f") {
+            strict: arg.contains('s'),
+            name_reductive: arg.contains('n'),
+            event_reductive: arg.contains('e'),
+            filters: if arg.contains('f') {
                 Some(args.collect::<Vec<String>>())
             } else {
                 None
@@ -74,7 +47,7 @@ impl List {
         }
     }
 
-    fn print_devices(self) {
+    fn list(self) {
         let mut devices = devices::get_devices();
         if self.filters.is_some() {
             match self.strict {
@@ -85,26 +58,41 @@ impl List {
             }
         }
 
-        if !self.name_only {
-            println!("{:#?}", devices);
-            return;
+        match [self.name_reductive, self.event_reductive] {
+            [true, true] => {
+                devices
+                    .iter()
+                    .map(|d| (d.name(), d.event()))
+                    .inspect(|(n, e)| println!("[\n    name: '{}',\n    event: '{}'\n]", n, e))
+                    .count();
+            }
+            [false, false] => println!("{:#?}", devices),
+            [true, false] => println!(
+                "{:#?}",
+                devices.iter().map(|d| d.name()).collect::<Vec<&str>>()
+            ),
+            [false, true] => println!(
+                "{:#?}",
+                devices.iter().map(|d| d.event()).collect::<Vec<&str>>()
+            ),
         }
-
-        let devices = devices.iter().map(|d| d.name()).collect::<Vec<&str>>();
-        println!("{:#?}", devices);
     }
 }
 
 fn read(arg: &str, args: std::env::Args) {}
 
-fn help(arg: &str, _: std::env::Args) {
+fn help() {
+    // NOTE colors orange and violet
     let red: String = clr(241, 153, 123);
     let blue: String = clr(167, 123, 213);
+    // NOTE colors red and blue
+    // let red: String = clr(241, 53, 123);
+    // let blue: String = clr(127, 123, 233);
     println!(
         "{}\n\n{}{}\n\n{}\n\n{}\t{}\n{}\t{}\n{}\t{}",
         "Linux input device event logger",
         blue.clone() + "Usage:" + END + " ",
-        red.clone() + "fen [COMMAND][OPTIONS] [ARGUMENTS]" + END,
+        red.clone() + "crb [COMMAND][OPTIONS] [ARGUMENTS]" + END,
         blue.clone() + "COMMANDS:" + END + " ",
         blue.clone() + "-L (list)",
         red.clone() + "list the input devices detected on this host machine",
@@ -115,6 +103,8 @@ fn help(arg: &str, _: std::env::Args) {
     );
 }
 
+fn examples() {}
+
 use colors::{clr, END};
 
 mod colors {
@@ -123,5 +113,43 @@ mod colors {
 
     pub(super) fn clr(r: u8, g: u8, b: u8) -> String {
         format!("{};{};{};{}m", START, r, g, b)
+    }
+}
+
+struct Help {
+    show_examples: bool,
+    commands: Vec<String>,
+}
+
+impl Help {
+    fn new(arg: &str, args: std::env::Args) -> Self {
+        Self {
+            show_examples: arg.contains("e"),
+            commands: args.collect::<Vec<String>>(),
+        }
+    }
+
+    fn help(self) {
+        if self.show_examples {
+            examples();
+            return;
+        }
+        help();
+    }
+}
+
+struct Read {
+    save_output: bool,
+    raw_events: bool,
+    print_output: bool,
+}
+
+impl Read {
+    fn new(arg: &str) -> Self {
+        Self {
+            save_output: arg.contains('s'),
+            raw_events: arg.contains('r'),
+            print_output: arg.contains('p'),
+        }
     }
 }
