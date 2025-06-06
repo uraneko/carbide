@@ -3,5 +3,5 @@
 version = 4
 
 [[package]]
-name = "fen"
+name = "carbide"
 version = "0.1.0"

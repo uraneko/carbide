@@ -1,4 +1,8 @@
 [package]
-name = "fen"
+name = "carbide"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
+
+[[bin]]
+name = "crb"
+path = "src/main.rs"
