@@ -75,6 +75,22 @@ impl timeval {
     }
 }
 
+impl std::fmt::Display for timeval {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}.{}", self.tv_sec, self.tv_usec)
+    }
+}
+
+impl std::fmt::Display for input_event {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{{\n   time: {},\n   type: {},\n   code: {},\n   value: {}\n}}",
+            self.time, self.type_, self.code, self.value
+        )
+    }
+}
+
 pub(crate) fn read(event: &str) {
     let mut reader = File::open(EVENTS_DIR.to_string() + event).unwrap();
     let mut buf: [u8; BUF_SIZE] = [0u8; BUF_SIZE];
@@ -87,7 +103,7 @@ pub(crate) fn read(event: &str) {
         // _ = writer.write_all(&buf).unwrap();
         println!("{:?}", buf);
         if brk == 1 || brk == 3 {
-            println!("{:#?}\n", input_event::from_buf(&buf));
+            println!("{}\n", input_event::from_buf(&buf));
         }
         if brk == 4 {
             println!("-------------- event received ---------------");
