@@ -1,0 +1,14 @@
+[package]
+name = "carbide"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "crb"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1.0.219", optional = true, features = ["derive"] }
+
+[features]
+serde = ["dep:serde"]

@@ -1,22 +1,29 @@
-use std::ffi::c_int;
+use std::ffi::{c_long, c_uint, c_ulong, c_ushort};
 use std::fs::File;
 use std::io::{Read, Write};
 
-// BUG probably have to use c types from the c library or std c types
-#[repr(C)]
-#[derive(Debug)]
-pub struct input_event {
-    time: timeval,
-    type_: u16,
-    code: u16,
-    value: u32,
-}
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
 
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct input_event {
+    time: timeval,
+    type_: c_ushort,
+    code: c_ushort,
+    value: c_uint,
+}
+
+// repr c here does nothing memory allignment wise
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct timeval {
-    tv_sec: i64,  // time_t
-    tv_usec: u64, // long int
+    // time_t
+    tv_sec: c_long,
+    // long int
+    tv_usec: c_ulong,
 }
 
 const EVENTS_DIR: &str = "/dev/input/";
@@ -97,17 +104,17 @@ pub(crate) fn read(event: &str) {
 
     let mut brk = 0;
     loop {
-        brk += 1;
+        if brk == 0 {
+            println!("\n-------------- event received ---------------");
+            brk = 4;
+        }
+        brk -= 1;
 
         _ = reader.read(&mut buf).unwrap();
         // _ = writer.write_all(&buf).unwrap();
         println!("{:?}", buf);
         if brk == 1 || brk == 3 {
             println!("{}\n", input_event::from_buf(&buf));
-        }
-        if brk == 4 {
-            println!("-------------- event received ---------------");
-            brk = 0;
         }
     }
 }
