@@ -62,6 +62,8 @@ struct Find {
     // TODO
     #[arg(long, short = 'I')]
     ignore_case: bool,
+    #[arg(long, short = 'E')]
+    exact_matches: bool,
 }
 
 impl CommandLauncher for Find {
@@ -72,7 +74,14 @@ impl CommandLauncher for Find {
                 devices::ignore_case(&mut devices, &mut pats);
             }
 
-            devices = devices::into_filter_devices(devices, pats);
+            devices = if self.exact_matches {
+                devices::into_filter_devices_exact_matches(devices, pats)
+            } else {
+                devices::into_filter_devices(devices, pats)
+            };
+        }
+        if devices.is_empty() {
+            return Ok("No devices matching the passed filters were found".into());
         }
 
         Ok(match [self.name, self.event] {

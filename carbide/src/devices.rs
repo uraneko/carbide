@@ -215,6 +215,8 @@ pub fn ignore_case(devices: &mut Vec<InputDevice>, pats: &mut Vec<String>) {
     pats.iter_mut().for_each(|p| *p = p.to_lowercase());
 }
 
+// iterate over the filters for every device
+// if device name contains 1 or more of the pattern, then keep the device
 pub fn into_filter_devices(devices: Vec<InputDevice>, pats: Vec<String>) -> Vec<InputDevice> {
     devices
         .into_iter()
@@ -225,7 +227,9 @@ pub fn into_filter_devices(devices: Vec<InputDevice>, pats: Vec<String>) -> Vec<
         .collect()
 }
 
-pub fn into_filter_devices_strict(
+// iterate over the filters for every device
+// keep only the devices that contain all the passed filter patterns
+pub fn into_filter_devices_exact_matches(
     devices: Vec<InputDevice>,
     pats: Vec<String>,
 ) -> Vec<InputDevice> {
