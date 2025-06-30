@@ -5,7 +5,7 @@ use std::io::Read;
 const INPUT_DEVICES: &str = "/proc/bus/input/devices";
 
 #[derive(Debug)]
-pub(crate) struct InputDevice {
+pub struct InputDevice {
     i: DeviceId,
     n: String,
     p: String,
@@ -16,7 +16,7 @@ pub(crate) struct InputDevice {
 }
 
 #[derive(Debug)]
-struct DeviceId {
+pub struct DeviceId {
     bus_type: u16,
     vendor: u16,
     product: u16,
@@ -24,7 +24,7 @@ struct DeviceId {
 }
 
 #[derive(Debug)]
-struct DeviceBitMaps {
+pub struct DeviceBitMaps {
     prop: Option<u64>,
     ev: Option<u64>,
     key: Option<String>,
@@ -38,11 +38,11 @@ struct DeviceBitMaps {
 }
 
 impl InputDevice {
-    pub(crate) fn name(&self) -> &str {
+    pub fn name(&self) -> &str {
         &self.n
     }
 
-    pub(crate) fn event(&self) -> &str {
+    pub fn event(&self) -> &str {
         self.h
             .iter()
             .find(|h| h.contains("event"))
@@ -50,7 +50,7 @@ impl InputDevice {
     }
 }
 
-pub(crate) fn get_devices() -> Vec<InputDevice> {
+pub fn get_devices() -> Vec<InputDevice> {
     let mut f = File::open(INPUT_DEVICES).unwrap();
     let mut s = String::new();
 
@@ -62,7 +62,7 @@ pub(crate) fn get_devices() -> Vec<InputDevice> {
         .collect()
 }
 
-pub(crate) fn get_device(device: &str) -> InputDevice {
+pub fn get_device(device: &str) -> InputDevice {
     let mut s = device.split('\n').map(|s| s.to_owned());
 
     InputDevice {
@@ -151,7 +151,9 @@ pub(crate) fn get_device(device: &str) -> InputDevice {
                 panic!("input devices file gave bad data")
             };
             if !handlers.starts_with("H: Handlers=") {
-                panic!("Handlers chunk wasn't Handlers chunk\nOr it was but doesn't start with 'H: Handlers='")
+                panic!(
+                    "Handlers chunk wasn't Handlers chunk\nOr it was but doesn't start with 'H: Handlers='"
+                )
             }
 
             handlers
@@ -207,10 +209,13 @@ pub(crate) fn get_device(device: &str) -> InputDevice {
         },
     }
 }
-pub(crate) fn into_filter_devices(
-    devices: Vec<InputDevice>,
-    pats: Vec<String>,
-) -> Vec<InputDevice> {
+
+pub fn ignore_case(devices: &mut Vec<InputDevice>, pats: &mut Vec<String>) {
+    devices.iter_mut().for_each(|d| d.n = d.n.to_lowercase());
+    pats.iter_mut().for_each(|p| *p = p.to_lowercase());
+}
+
+pub fn into_filter_devices(devices: Vec<InputDevice>, pats: Vec<String>) -> Vec<InputDevice> {
     devices
         .into_iter()
         .filter(|d| {
@@ -220,7 +225,7 @@ pub(crate) fn into_filter_devices(
         .collect()
 }
 
-pub(crate) fn into_filter_devices_strict(
+pub fn into_filter_devices_strict(
     devices: Vec<InputDevice>,
     pats: Vec<String>,
 ) -> Vec<InputDevice> {
@@ -233,10 +238,7 @@ pub(crate) fn into_filter_devices_strict(
         .collect()
 }
 
-pub(crate) fn as_filter_devices<'a>(
-    devices: &'a [InputDevice],
-    pats: &[String],
-) -> Vec<&'a InputDevice> {
+pub fn as_filter_devices<'a>(devices: &'a [InputDevice], pats: &[String]) -> Vec<&'a InputDevice> {
     devices
         .into_iter()
         .filter(|d| {
@@ -245,7 +247,7 @@ pub(crate) fn as_filter_devices<'a>(
         })
         .collect()
 }
-pub(crate) fn as_filter_devices_strict<'a>(
+pub fn as_filter_devices_strict<'a>(
     devices: &'a [InputDevice],
     pats: &[String],
 ) -> Vec<&'a InputDevice> {

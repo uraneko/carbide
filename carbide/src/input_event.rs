@@ -98,7 +98,7 @@ impl std::fmt::Display for input_event {
     }
 }
 
-pub(crate) fn read(event: &str) {
+pub fn read(event: &str) {
     let mut reader = File::open(EVENTS_DIR.to_string() + event).unwrap();
     let mut buf: [u8; BUF_SIZE] = [0u8; BUF_SIZE];
 
