@@ -2,7 +2,7 @@ use std::io::Write;
 
 use carbide::devices;
 use carbide::input_event;
-use clap::{Args, Parser};
+use clap::{Args, Parser, ValueEnum};
 
 fn main() -> Result<(), CLIError> {
     let res = match Carbide::parse() {
@@ -19,6 +19,7 @@ fn main() -> Result<(), CLIError> {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum CLIError {
     IOError,
+    CantGiveAccessToParentDir,
 }
 
 impl std::fmt::Display for CLIError {
@@ -107,21 +108,77 @@ impl CommandLauncher for Find {
 #[derive(Debug, Args, PartialEq, Eq, Clone, Hash)]
 #[command(alias = "lisn")]
 struct Listen {
+    /// whether to parse the input_events or keep them as raw bytes
     #[arg(long, short = 'r')]
-    raw: bool,
+    raw_bytes: bool,
+    /// where to output the read input event value
+    /// possible values are <stdout> and <some_path_name> in the current directory
     #[arg(long, short = 'o')]
-    output: Option<String>,
-    #[arg(long, short = 'p')]
-    print: bool,
+    output: Option<ListenOutput>,
+    /// whether to truncate the output file if it already exists
+    #[arg(long, short = 't')]
+    truncate: bool,
+    /// the event number of the input device the program would listen in to
+    /// you can list devices names + event numbers by running
+    /// ```bash
+    /// carb find -en -F "<your filters>" "<go here>"
+    /// # run
+    /// $ carb find --help
+    /// for more on the find command
+    /// ```
     #[arg(long, short = 'e')]
     event: u8,
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
+enum ListenOutput {
+    #[default]
+    Stdout,
+    File(std::path::PathBuf),
+    All(std::path::PathBuf),
+}
+
+impl std::str::FromStr for ListenOutput {
+    type Err = CLIError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "stdout" => Ok(Self::Stdout),
+            val if val.contains("..") || val.starts_with("/") =>
+            // val if val.contains("/") =>
+            {
+                Err(CLIError::CantGiveAccessToParentDir)
+            }
+            val if val.starts_with('+') => {
+                let path: std::path::PathBuf = val[1..].into();
+
+                Ok(Self::All(path))
+            }
+            val => {
+                let path: std::path::PathBuf = val.into();
+
+                Ok(Self::File(path))
+            }
+        }
+    }
 }
 
 impl CommandLauncher for Listen {
     fn run(self) -> Result<String, CLIError> {
         let event = format!("event{}", self.event);
+        let output = self.output.unwrap_or(ListenOutput::default());
 
-        input_event::read(&event);
+        match output {
+            ListenOutput::File(p) => {
+                input_event::read_to_file(p, self.truncate, self.raw_bytes, &event);
+            }
+            ListenOutput::All(p) => {
+                input_event::read_to_all(p, self.truncate, self.raw_bytes, &event);
+            }
+            ListenOutput::Stdout => {
+                input_event::read_to_stdout(&event, self.raw_bytes);
+            }
+        }
 
         Ok(format!("listening on input event {}", self.event))
     }

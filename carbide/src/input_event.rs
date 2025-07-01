@@ -1,13 +1,15 @@
 use std::ffi::{c_long, c_uint, c_ulong, c_ushort};
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::{BufReader, BufWriter, Read, Write};
+use std::path::PathBuf;
 
-#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, PartialOrd, Ord)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Eq, Hash, Default, PartialOrd, Ord,
+)]
+
 pub struct input_event {
     time: timeval,
     type_: c_ushort,
@@ -17,8 +19,9 @@ pub struct input_event {
 
 // repr c here does nothing memory allignment wise
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, PartialOrd, Ord)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Eq, Hash, Default, PartialOrd, Ord,
+)]
 pub struct timeval {
     // time_t
     tv_sec: c_long,
@@ -98,23 +101,129 @@ impl std::fmt::Display for input_event {
     }
 }
 
-pub fn read(event: &str) {
-    let mut reader = File::open(EVENTS_DIR.to_string() + event).unwrap();
+fn open_file(p: PathBuf, trunc: bool) -> File {
+    std::fs::OpenOptions::new()
+        .write(true)
+        .truncate(trunc)
+        .append(!trunc)
+        .create(true)
+        .open(p)
+        .unwrap()
+}
+
+pub fn read_to_all(p: PathBuf, trunc: bool, raw: bool, event: &str) {
+    let f = open_file(p, trunc);
+    let stdout = std::io::stdout();
+    let (mut reader, mut so_writer, mut f_writer) = (
+        prepare_reader(event),
+        prepare_writer(stdout),
+        prepare_writer(f),
+    );
     let mut buf: [u8; BUF_SIZE] = [0u8; BUF_SIZE];
 
     let mut brk = 0;
     loop {
-        if brk == 0 {
-            println!("\n-------------- event received ---------------");
-            brk = 4;
-        }
-        brk -= 1;
-
-        _ = reader.read(&mut buf).unwrap();
-        // _ = writer.write_all(&buf).unwrap();
-        println!("{:?}", buf);
-        if brk == 1 || brk == 3 {
-            println!("{}\n", input_event::from_buf(&buf));
-        }
+        _ = write_event_padding(&mut brk, &mut so_writer);
+        _ = write_event_padding(&mut brk, &mut f_writer);
+        _ = reader.read(&mut buf);
+        _ = write_raw_or_parsed(raw, &mut brk, &buf, &mut so_writer);
+        _ = write_raw_or_parsed(raw, &mut brk, &buf, &mut f_writer);
     }
+}
+
+pub fn read_to_file(p: PathBuf, trunc: bool, raw: bool, event: &str) {
+    let f = open_file(p, trunc);
+    let (mut reader, mut writer) = prepare_reader_writer(f, event);
+    let mut buf: [u8; BUF_SIZE] = [0u8; BUF_SIZE];
+
+    let mut brk = 0;
+    loop {
+        _ = write_event_padding(&mut brk, &mut writer);
+        _ = reader.read(&mut buf);
+        _ = write_raw_or_parsed(raw, &mut brk, &buf, &mut writer);
+    }
+}
+
+pub fn read_to_stdout(event: &str, raw: bool) {
+    let stdout = std::io::stdout();
+    let (mut reader, mut writer) = prepare_reader_writer(stdout, event);
+    let mut buf: [u8; BUF_SIZE] = [0u8; BUF_SIZE];
+
+    let mut brk = 0;
+    loop {
+        _ = write_event_padding(&mut brk, &mut writer);
+        _ = reader.read(&mut buf);
+        _ = write_raw_or_parsed(raw, &mut brk, &buf, &mut writer);
+    }
+}
+
+fn write_raw_or_parsed<T: Write>(
+    raw: bool,
+    brk: &mut u8,
+    buf: &[u8; BUF_SIZE],
+    writer: &mut BufWriter<T>,
+) -> Result<(), std::io::Error> {
+    if raw {
+        write_raw_event(brk, buf, writer)
+    } else {
+        write_event(brk, buf, writer)
+    }
+}
+
+fn prepare_writer<T: Write>(inner: T) -> BufWriter<T> {
+    BufWriter::new(inner)
+}
+
+fn prepare_reader(e: &str) -> BufReader<File> {
+    let file = File::open(EVENTS_DIR.to_string() + e).unwrap();
+
+    std::io::BufReader::new(file)
+}
+
+fn prepare_reader_writer<T: Write>(write_to_me: T, e: &str) -> (BufReader<File>, BufWriter<T>) {
+    (prepare_reader(e), prepare_writer(write_to_me))
+}
+
+fn write_event_padding<T: Write>(
+    brk: &mut u8,
+    writer: &mut BufWriter<T>,
+) -> Result<(), std::io::Error> {
+    if *brk == 0 {
+        let res = writer.write_all(b"\n-------------- event received ---------------\n");
+        *brk = 4;
+
+        return res;
+    }
+    *brk -= 1;
+
+    Ok(())
+}
+
+fn write_event<T: Write>(
+    brk: &mut u8,
+    buf: &[u8; BUF_SIZE],
+    writer: &mut BufWriter<T>,
+) -> Result<(), std::io::Error> {
+    if *brk == 1 || *brk == 3 {
+        let event = input_event::from_buf(buf);
+        _ = writer.write_all(event.to_string().as_bytes());
+        _ = writer.write_all(&[10, 13]);
+        _ = writer.flush();
+    }
+
+    Ok(())
+}
+
+fn write_raw_event<T: Write>(
+    brk: &mut u8,
+    buf: &[u8; BUF_SIZE],
+    writer: &mut BufWriter<T>,
+) -> Result<(), std::io::Error> {
+    if *brk == 1 || *brk == 3 {
+        _ = writer.write_all(format!("{:?}", &buf).as_bytes());
+        _ = writer.write_all(&[10, 13]);
+        _ = writer.flush();
+    }
+
+    Ok(())
 }
