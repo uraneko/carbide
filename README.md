@@ -2,6 +2,9 @@
     carbide
 </h1>
 
+> [!IMPORTANT]
+> This project has no real world use case, since [evdev-rs](https://docs.rs/evdev-rs/latest/evdev_rs/) exists.
+
 [<img alt="github" src="https://img.shields.io/badge/github-uraneko.carbide-A5915F?style=for-the-badge&logo=github&labelColor=3a3a3a" height="25">](https://github.com/uraneko/carbide) 
 [<img alt="crates.io" src="https://img.shields.io/crates/v/carbide.svg?style=for-the-badge&color=E40046&logo=rust&labelColor=3a3a3a" height="25">](https://crates.io/crates/carbide) 
 [<img alt="docs.rs" src="https://img.shields.io/badge/docs.rs-carbide-495c9f?style=for-the-badge&logo=docsdotrs&labelColor=3a3a3a" height="25">](https://docs.rs/carbide) 
