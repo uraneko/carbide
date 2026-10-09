@@ -5,7 +5,7 @@ use std::io::Read;
 const INPUT_DEVICES: &str = "/proc/bus/input/devices";
 
 #[derive(Debug)]
-pub(crate) struct InputDevice {
+pub struct InputDevice {
     i: DeviceId,
     n: String,
     p: String,
@@ -16,7 +16,7 @@ pub(crate) struct InputDevice {
 }
 
 #[derive(Debug)]
-struct DeviceId {
+pub struct DeviceId {
     bus_type: u16,
     vendor: u16,
     product: u16,
@@ -24,7 +24,7 @@ struct DeviceId {
 }
 
 #[derive(Debug)]
-struct DeviceBitMaps {
+pub struct DeviceBitMaps {
     prop: Option<u64>,
     ev: Option<u64>,
     key: Option<String>,
@@ -38,39 +38,36 @@ struct DeviceBitMaps {
 }
 
 impl InputDevice {
-    pub(crate) fn name(&self) -> &str {
+    pub fn name(&self) -> &str {
         &self.n
     }
 
-    pub(crate) fn event(&self) -> Option<&String> {
-        self.h.iter().find(|h| h.contains("event"))
+    pub fn event(&self) -> &str {
+        self.h
+            .iter()
+            .find(|h| h.contains("event"))
+            .map_or("_", |e| e)
     }
 }
 
-pub(crate) fn scan_devices() -> Vec<InputDevice> {
+pub fn get_devices() -> Vec<InputDevice> {
     let mut f = File::open(INPUT_DEVICES).unwrap();
     let mut s = String::new();
 
     _ = File::read_to_string(&mut f, &mut s).unwrap();
 
-    let mut s = s.split("\n\n").into_iter().map(|s| s.to_owned());
-
-    let mut v = vec![];
-
-    while let Some(indev) = s.next() {
-        if !indev.is_empty() {
-            v.push(scan_device(&indev));
-        }
-    }
-
-    v
+    s.split("\n\n")
+        .filter(|s| !s.is_empty())
+        .map(|dev| get_device(&dev))
+        .collect()
 }
 
-pub(crate) fn scan_device(device: &str) -> InputDevice {
+pub fn get_device(device: &str) -> InputDevice {
     let mut s = device.split('\n').map(|s| s.to_owned());
 
     InputDevice {
         i: {
+            // println!("i");
             let Some(id) = s.next() else {
                 panic!("bad string")
             };
@@ -94,8 +91,6 @@ pub(crate) fn scan_device(device: &str) -> InputDevice {
                 })
                 .collect::<HashMap<&str, u16>>();
 
-            println!("id: {:#?}", map);
-
             DeviceId {
                 bus_type: map.remove("Bus").unwrap(),
                 vendor: map.remove("Vendor").unwrap(),
@@ -105,7 +100,7 @@ pub(crate) fn scan_device(device: &str) -> InputDevice {
         },
 
         n: {
-            println!("n");
+            // println!("n");
             let Some(mut name) = s.next() else {
                 panic!("input devices file gave bad data")
             };
@@ -119,7 +114,7 @@ pub(crate) fn scan_device(device: &str) -> InputDevice {
             name
         },
         p: {
-            println!("p");
+            // println!("p");
             let Some(mut phys) = s.next() else {
                 panic!("input devices file gave bad data")
             };
@@ -129,7 +124,7 @@ pub(crate) fn scan_device(device: &str) -> InputDevice {
             phys.drain(8..).collect()
         },
         s: {
-            println!("s");
+            // println!("s");
             let Some(mut sysfs) = s.next() else {
                 panic!("input devices file gave bad data")
             };
@@ -141,7 +136,7 @@ pub(crate) fn scan_device(device: &str) -> InputDevice {
             sysfs.drain(9..).collect()
         },
         u: {
-            println!("u");
+            // println!("u");
             let Some(mut uniq) = s.next() else {
                 panic!("input devices file gave bad data")
             };
@@ -151,12 +146,14 @@ pub(crate) fn scan_device(device: &str) -> InputDevice {
             uniq.drain(8..).collect::<String>().parse().ok()
         },
         h: {
-            println!("h");
+            // println!("h");
             let Some(handlers) = s.next() else {
                 panic!("input devices file gave bad data")
             };
             if !handlers.starts_with("H: Handlers=") {
-                panic!("Handlers chunk wasn't Handlers chunk\nOr it was but doesn't start with 'H: Handlers='")
+                panic!(
+                    "Handlers chunk wasn't Handlers chunk\nOr it was but doesn't start with 'H: Handlers='"
+                )
             }
 
             handlers
@@ -168,7 +165,7 @@ pub(crate) fn scan_device(device: &str) -> InputDevice {
         },
 
         b: {
-            println!("b");
+            // println!("b");
             let mut map = HashMap::new();
 
             let mut k: Option<String> = None;
@@ -197,8 +194,6 @@ pub(crate) fn scan_device(device: &str) -> InputDevice {
                 );
             }
 
-            println!("props: {:#?}\n    \"Key\": {:?},\n", map, k);
-
             DeviceBitMaps {
                 prop: map.remove("PROP"),
                 ev: map.remove("EV"),
@@ -215,81 +210,56 @@ pub(crate) fn scan_device(device: &str) -> InputDevice {
     }
 }
 
-pub(crate) fn filter_devices<'a, 'b>(
-    devices: &'a [InputDevice],
-    pat: &'b [String],
-) -> Vec<&'a InputDevice>
-where
-    'a: 'b,
-{
+pub fn ignore_case(devices: &mut Vec<InputDevice>, pats: &mut Vec<String>) {
+    devices.iter_mut().for_each(|d| d.n = d.n.to_lowercase());
+    pats.iter_mut().for_each(|p| *p = p.to_lowercase());
+}
+
+// iterate over the filters for every device
+// if device name contains 1 or more of the pattern, then keep the device
+pub fn into_filter_devices(devices: Vec<InputDevice>, pats: Vec<String>) -> Vec<InputDevice> {
     devices
         .into_iter()
         .filter(|d| {
-            let mut condition = true;
-            for p in pat {
-                if !d.n.contains(p) {
-                    condition = false;
-                    break;
-                }
-            }
-
-            condition
+            let name = d.name();
+            pats.iter().any(|p| name.contains(p))
         })
         .collect()
 }
 
-// fn find_device<'a>(devices: &'a [InputDevice], pat: &[String]) -> Option<&'a String> {
-//     let dev = devices.iter().find(|d| {
-//         let mut condition = true;
-//         for p in pat {
-//             if !d.name.contains(p) {
-//                 condition = false;
-//                 break;
-//             }
-//         }
-//
-//         condition
-//     });
-//
-//     if dev.is_some() {
-//         return dev.unwrap().handlers.iter().find(|h| h.contains("event"));
-//     }
-//
-//     None
-// }
+// iterate over the filters for every device
+// keep only the devices that contain all the passed filter patterns
+pub fn into_filter_devices_exact_matches(
+    devices: Vec<InputDevice>,
+    pats: Vec<String>,
+) -> Vec<InputDevice> {
+    devices
+        .into_iter()
+        .filter(|d| {
+            let name = d.name();
+            pats.iter().all(|p| name.contains(p))
+        })
+        .collect()
+}
 
-// fn query_devices(devices: Vec<InputDevice>, )
-
-const HEX_A: &str = "10";
-const HEX_B: &str = "11";
-const HEX_C: &str = "12";
-const HEX_D: &str = "13";
-const HEX_E: &str = "14";
-const HEX_F: &str = "15";
-
-fn hex_decode(value: &str) -> Result<u64, std::io::Error> {
-    if value.contains(|c: char| !c.is_ascii_digit() && !('a'..'f').contains(&c)) {
-        return Err(std::io::Error::other("not a valid hex int"));
-    }
-
-    let [mut a, mut b, mut c, mut d, mut e, mut f]: [usize; 6] = [0; 6];
-    value.chars().for_each(|ch| match ch {
-        'a' => a += 1,
-        'b' => b += 1,
-        'c' => c += 1,
-        'd' => d += 1,
-        'e' => e += 1,
-        'f' => f += 1,
-        _ => (),
-    });
-
-    Ok(value
-        .replacen('a', HEX_A, a)
-        .replacen('b', HEX_B, b)
-        .replacen('c', HEX_C, c)
-        .replacen('d', HEX_D, d)
-        .replacen('e', HEX_E, e)
-        .replacen('f', HEX_F, f)
-        .parse()
-        .unwrap())
+pub fn as_filter_devices<'a>(devices: &'a [InputDevice], pats: &[String]) -> Vec<&'a InputDevice> {
+    devices
+        .into_iter()
+        .filter(|d| {
+            let name = d.name();
+            pats.iter().any(|p| name.contains(p))
+        })
+        .collect()
+}
+pub fn as_filter_devices_strict<'a>(
+    devices: &'a [InputDevice],
+    pats: &[String],
+) -> Vec<&'a InputDevice> {
+    devices
+        .into_iter()
+        .filter(|d| {
+            let name = d.name();
+            pats.iter().all(|p| name.contains(p))
+        })
+        .collect()
 }
